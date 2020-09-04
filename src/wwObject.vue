@@ -6,7 +6,7 @@
 <template>
     <div class="ww-container" v-style="c_style">
         <wwLayout :options="wwObject.content.data.options" tag="div" :ww-list="wwObject.content.data.wwObjects" class="wwobjects-wrapper" @ww-add="add($event)" @ww-remove="remove($event)">
-            <wwObject v-for="wwObject in wwObject.content.data.wwObjects" :key="wwObject.uniqueId" :ww-object="wwObject"></wwObject>
+            <wwObject v-for="(wwObject, index) in wwObject.content.data.wwObjects" :key="index" :ww-object="wwObject" :indexInBoundedParent="isRootCmsTemplate ? index : -1"></wwObject>
         </wwLayout>
     </div>
 </template>
@@ -16,6 +16,7 @@
 <script>
 /* wwManager:start */
 import { mapGetters } from 'vuex';
+import makeStories from './stories';
 /* wwManager:end */
 
 export default {
@@ -38,9 +39,7 @@ export default {
             return this.wwObjectCtrl.get();
         },
         c_style() {
-            const style = {};
-
-            return style;
+            return { width: '100px', height: '100px' };
         },
         /* wwManager:start */
         ...mapGetters({ c_screen: 'front/getScreenSize' }),
@@ -55,34 +54,41 @@ export default {
                     return this.wwObject.content.data.options[this.d_screens[screenIndex]];
                 }
             }
+            return {};
+        },
+        isRootCmsTemplate() {
+            const { cms } = this.wwObject.content;
+            return cms && Object(cms) === cms && Object(cms.bindings) === cms.bindings && cms.bindings.collection;
         }
         /* wwManager:end */
     },
+    created() {
+        this.initData();
+        if (this.isRootCmsTemplate) this.initDataBindings();
+    },
     methods: {
+        isContainer(wwObject) {
+            return wwObject.content.type === 'ww_container';
+        },
         initData() {
             //Init objects
             let needUpdate = false;
-            // if (!this.wwObject.content.data.background) {
-            //     this.wwObject.content.data.background = wwLib.wwObject.getDefault({ type: "ww-color", data: { color: "white" } });
-            //     needUpdate = true;
-            // }
-
             if (!this.wwObject.content.data.options) {
                 this.wwObject.content.data.options = {
                     lg: {
-                        direction: 'column',
+                        direction: 'row',
                         reverse: false,
-                        justifyContent: 'center',
+                        justifyContent: 'space-around',
                         alignItems: 'center',
                         flexWrap: 'nowrap',
-                        minHeight: '50%'
+                        minHeight: '25%'
                     }
                 };
 
                 needUpdate = true;
             }
 
-            if (_.isEmpty(this.wwObject.content.data.wwObjects)) {
+            if (!Array.isArray(this.wwObject.content.data.wwObjects)) {
                 this.wwObject.content.data.wwObjects = [];
                 needUpdate = true;
             }
@@ -92,240 +98,18 @@ export default {
             }
         },
         /* wwManager:start */
+        async initDataBindings() {
+            const collectionDescriptor = this.wwObjectCtrl.getCmsCollection(this.wwObject.content.cms.bindings.collection);
+            this.createBoundedChildren(collectionDescriptor);
+            await this.wwObjectCtrl.update(this.wwObject);
+        },
+
         async edit() {
             wwLib.wwObjectHover.setLock(this);
 
-            let editList = {
-                SELECT_LAYOUT: {
-                    separator: {
-                        en: `Container's layout`,
-                        fr: `Disposition du container`
-                    },
-                    title: {
-                        en: `Container's layout`,
-                        fr: `Disposition du container`
-                    },
-                    desc: {
-                        en: 'Set layout to column or row.',
-                        fr: 'Changer la disposition du container en colonne ou en ligne.'
-                    },
-                    icon: 'fas fa-columns',
-                    shortcut: 'l',
-                    next: 'WWCONTAINER_LAYOUT'
-                }
-            };
-
-            wwLib.wwPopups.addStory('WWCONTAINER_EDIT', {
-                title: {
-                    en: 'Edit Container',
-                    fr: 'Editer le container'
-                },
-                type: 'wwPopupEditWwObject',
-                buttons: null,
-                storyData: {
-                    list: editList
-                }
-            });
-
-            wwLib.wwPopups.addStory('WWCONTAINER_LAYOUT', {
-                title: {
-                    en: `Container's layout`,
-                    fr: `Disposition du container`
-                },
-                type: 'wwPopupForm',
-                buttons: {
-                    OK: {
-                        text: {
-                            en: 'Ok',
-                            fr: 'Valider'
-                        },
-                        next: false
-                    }
-                },
-                storyData: {
-                    fields: [
-                        {
-                            label: {
-                                en: `Container's layout`,
-                                fr: `Disposition du container`
-                            },
-                            desc: {
-                                en: 'Set layout to column or row.',
-                                fr: 'Changer la disposition du container en colonne ou en ligne.'
-                            },
-                            type: 'select',
-                            key: 'direction',
-                            value: this.c_currentScreenOptions.direction,
-                            options: {
-                                wwObject: {},
-                                values: [
-                                    {
-                                        value: 'column',
-                                        text: {
-                                            en: 'Column',
-                                            fr: 'Colonne'
-                                        }
-                                    },
-                                    {
-                                        value: 'row',
-                                        default: true,
-                                        text: {
-                                            en: 'Row',
-                                            fr: 'Ligne'
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            label: {
-                                en: `Reverse elements' order`,
-                                fr: `Inverser l'ordre des élements`
-                            },
-                            desc: {
-                                en: 'Show element in reverse order.',
-                                fr: 'Afficher les élements dans un sens inversé.'
-                            },
-                            type: 'radio',
-                            key: 'reverse',
-                            value: this.c_currentScreenOptions.reverse
-                        },
-                        {
-                            label: {
-                                en: `Elements' position on primary axis`,
-                                fr: `Position des élements sur l'axe principal`
-                            },
-                            desc: {
-                                en: '',
-                                fr: ''
-                            },
-                            type: 'select',
-                            key: 'justifyContent',
-                            value: this.c_currentScreenOptions.justifyContents,
-                            options: {
-                                wwObject: {},
-                                values: [
-                                    {
-                                        value: 'flex-start',
-                                        text: {
-                                            en: 'Start',
-                                            fr: 'Début'
-                                        }
-                                    },
-                                    {
-                                        value: 'center',
-                                        default: true,
-                                        text: {
-                                            en: 'Center',
-                                            fr: 'Millieu'
-                                        }
-                                    },
-                                    {
-                                        value: 'flex-end',
-                                        text: {
-                                            en: 'End',
-                                            fr: 'Fin'
-                                        }
-                                    },
-                                    {
-                                        value: 'space-between',
-                                        text: {
-                                            en: 'Space between elements',
-                                            fr: 'Espace entre les élements'
-                                        }
-                                    },
-                                    {
-                                        value: 'space-around',
-                                        text: {
-                                            en: 'Space around elements',
-                                            fr: 'Espace autours des élements'
-                                        }
-                                    },
-                                    {
-                                        value: 'space-evenly',
-                                        text: {
-                                            en: 'Even Spaces around elements',
-                                            fr: 'Espace égaux autours des élements'
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            label: {
-                                en: `Elements' position on secondary axis`,
-                                fr: `Position des élements sur l'axe secondaire`
-                            },
-                            desc: {
-                                en: '',
-                                fr: ''
-                            },
-                            type: 'select',
-                            key: 'alignItems',
-                            value: this.c_currentScreenOptions.alignItems,
-                            options: {
-                                wwObject: {},
-                                values: [
-                                    {
-                                        value: 'flex-start',
-                                        text: {
-                                            en: 'Start',
-                                            fr: 'Début'
-                                        }
-                                    },
-                                    {
-                                        value: 'center',
-                                        default: true,
-                                        text: {
-                                            en: 'Center',
-                                            fr: 'Millieu'
-                                        }
-                                    },
-                                    {
-                                        value: 'flex-end',
-                                        text: {
-                                            en: 'End',
-                                            fr: 'Fin'
-                                        }
-                                    },
-                                    {
-                                        value: 'stretch',
-                                        text: {
-                                            en: 'Stretch',
-                                            fr: 'Etirer'
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            label: {
-                                en: `Wrap elements if needed (For rows only)`,
-                                fr: `Mettre les élements à la ligne si necessaire (Pour l'affichage en lignes seulement)`
-                            },
-                            desc: {
-                                en: '',
-                                fr: ''
-                            },
-                            type: 'radio',
-                            key: 'flexWrap',
-                            value: this.c_currentScreenOptions.flexWrap === 'wrap'
-                        },
-                        {
-                            label: {
-                                en: `Min height`,
-                                fr: `Hauteur minumale`
-                            },
-                            desc: {
-                                en: `Use 'px' or '%' as unit.`,
-                                fr: `Utiliser 'px' ou '%' comme unité.`
-                            },
-                            type: 'text',
-                            key: 'minHeight',
-                            value: this.c_currentScreenOptions.minHeight
-                        }
-                    ]
-                }
+            const stories = makeStories(this.c_currentScreenOptions);
+            Object.keys(stories).forEach(key => {
+                wwLib.wwPopups.addStory(key, stories[key]);
             });
 
             let options = {
@@ -337,22 +121,6 @@ export default {
 
             try {
                 const result = await wwLib.wwPopups.open(options);
-
-                /*=============================================m_ÔÔ_m=============================================\
-                  LAYOUT
-                \================================================================================================*/
-                /*
-                this.wwObject.content.data.options = {
-                    lg: {
-                        direction: 'column',
-                        reverse: false,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        flexWrap: 'nowrap',
-                        minHeight: '50%'
-                    }
-                };
-                */
 
                 if (!this.wwObject.content.data.options[this.c_screen]) {
                     this.wwObject.content.data.options[this.c_screen] = _.cloneDeep(this.wwObject.content.data.options.lg);
@@ -382,37 +150,48 @@ export default {
                     this.wwObject.content.data.options[this.c_screen].minHeight = result.minHeight;
                 }
 
-                this.wwObjectCtrl.update(this.wwObject);
+                await this.wwObjectCtrl.update(this.wwObject);
 
-                this.wwObjectCtrl.globalEdit(result);
+                await this.wwObjectCtrl.globalEdit(result);
             } catch (error) {
                 console.log(error);
             }
 
             wwLib.wwObjectHover.removeLock();
         },
-        add(options) {
-            if (_.isEmpty(this.wwObject.content.data.wwObjects)) {
-                this.wwObject.content.data.wwObjects = [];
-            }
-
+        async add(options) {
             this.wwObject.content.data.wwObjects.splice(options.index, 0, options.wwObject);
+            await this.wwObjectCtrl.update(this.wwObject);
+        },
+        async remove(options) {
+            this.wwObject.content.data.wwObjects.splice(options.index, 1);
+            await this.wwObjectCtrl.update(this.wwObject);
+        },
 
+        async connectCmsCollection() {
+            const {
+                bindings: { collectionDescriptor }
+            } = await this.wwObjectCtrl.connectCmsCollection();
+            this.createBoundedChildren(collectionDescriptor);
             this.wwObjectCtrl.update(this.wwObject);
         },
-        remove(options) {
-            if (_.isEmpty(this.wwObject.content.data.wwObjects)) {
-                this.wwObject.content.data.wwObjects = [];
-            }
+        createBoundedChildren(collectionDescriptor) {
+            const cmsTemplateId = this.wwObject.content.data.wwObjects[0].uniqueId;
+            const cmsTemplate = this.wwObjectCtrl.getWwObjectById(cmsTemplateId);
+            this.wwObject.content.cms = {
+                bindings: {
+                    collection: collectionDescriptor.name
+                }
+            };
+            this.wwObject.content.data.wwObjects = collectionDescriptor.data.map(() => {
+                return this.getCmsTemplateCopy(cmsTemplate);
+            });
+        },
 
-            this.wwObject.content.data.wwObjects.splice(options.index, 1);
-
-            this.wwObjectCtrl.update(this.wwObject);
+        getCmsTemplateCopy(templateWwObject) {
+            return JSON.parse(JSON.stringify(templateWwObject));
         }
         /* wwManager:end */
-    },
-    created() {
-        this.initData();
     }
 };
 </script>
